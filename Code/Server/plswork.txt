@@ -1,0 +1,7 @@
+forward 2
+right .3
+forward .7
+right .6
+forward .3
+right .3
+forward 1.5

@@ -1,0 +1,11 @@
+forward 1.6
+right .3
+forward .8
+right .3
+forward .35
+right .6
+forward 1.8
+left .65
+forward .65
+left .55
+forward 1.6
