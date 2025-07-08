@@ -1,8 +1,10 @@
 from car import Car
+from camera import Camera
 #importing time and also importing classes from the other file used for first week
 import time
 #initalizing our_car to be a new instance of a car 
 our_car = Car()
+camera = Camera()
 #assigns all hardware to an object 
 our_car.start()
 
