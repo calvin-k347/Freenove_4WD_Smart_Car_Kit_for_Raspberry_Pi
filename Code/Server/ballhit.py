@@ -7,6 +7,7 @@ from car import Car
 from camera import Camera
 import threading
 import sys
+import math
 #importing time and also importing classes from the other file used for first week
 import time
 #initalizing our_car to be a new instance of a car 
@@ -36,8 +37,11 @@ def turn_left(t):
     our_car.motor.set_motor_model(-2000,-2000,3000,3000) 
     time.sleep(t)
     our_car.motor.set_motor_model(0,0,0,0)
-def forward():
-    our_car.motor.set_motor_model(700,700,700,700)
+def forward(force=None):
+    if force == "HIGH":
+        our_car.motor.set_motor_model(2000,2000,2000,2000)
+    else:
+        our_car.motor.set_motor_model(1200,1200,1200,1200)
 def reverse(t):
     our_car.motor.set_motor_model(-800,-800,-800,-800)
     time.sleep(t)
@@ -118,91 +122,88 @@ def find_ball(img):
             
             
             hsv_pixel = cv2.cvtColor(croppedImage, cv2.COLOR_BGR2HSV)
-            hue_channel = hsv_pixel[:,:, 0]
+            hue_channel = hsv_pixel[int(len(hsv_pixel)*(3/8)):int(len(hsv_pixel)*(5/8)),int(len(hsv_pixel[0])*(3/8)):int(len(hsv_pixel[0])*(5/8)), 0]
             hue_value = int(hue_channel.mean())
-            hue_list.append(hue_value)
 
             #print('Hue: ',hue_value)
-  
+            img_center_x = xmin + (xmax - xmin) // 2
+            img_center_y = ymin + (ymax - ymin) // 2
+            hypotenuse = int(math.sqrt(height ** 2 + (center_x - img_center_x) ** 2 ))
+            dist = center_x - img_center_x
             # Draw label            
             object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
-            label = '%s: %d%%: %s' % (object_name, int(curr_score[i]*100), str(hue_value)) # Example: 'person: 72%'
+            label = '%s %s' % (f"c{hue_for_color(hue_value)}", "r"+str(int(dist/height))) # Example: 'person: 72%'
             labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
             label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
             cv2.rectangle(img, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
             cv2.rectangle(img, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
             cv2.putText(img, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
             #if cType.getType() == "ball":
-            img_center_x = xmin + (xmax - xmin) // 2
-            img_center_y = ymin + (ymax -ymin) // 2
+            
             cv2.circle(img, (img_center_x, img_center_y) , 5, (0,0,255), -1)
             cv2.circle(img, (center_x, center_y) , 5, (0,255,0), -1)
                 
             # Record current max
             max_score = curr_score[i]
             max_index = i
-            angle = np.arctan(height/(center_x - img_center_x))
+
+            
 
     # Write Image (with bounding box) to file
     cv2.imwrite('video.jpg', img)
-    if hue_value:
-        print("DISTANCE",center_x - img_center_x)
-    return [hue_value if hue_value else 0,(center_x - img_center_x) if hue_value else 0, angle if hue_value else 0]
-# our function for line detection
-def boundary():
-    global last_turn
-    #gives a output for infrared every .2 secs
-    if (time.time() - our_car.car_record_time) > .2:
-        our_car.car_record_time = time.time()
-        infrared = our_car.infrared.read_all_infrared()
-        #infrared equals 0 we go forward
-        #print(infrared)
-        if infrared == 0:
-            forward()
-        # reverse towards left to adjust for the track
-        elif infrared in [1,3]:
-            reverse(.75)
-            turn_left(.2)
-            last_turn = "left"
-        # reverse towards right to adjust for the track
-        elif infrared in [4,6]:
-            reverse(.75)
-            turn_right(.2)
-            last_turn = "right"
-        else:
-            reverse(.75)
-            if last_turn:
-                if last_turn == "left":
-                    turn_left(.3)
-                elif last_turn == "right":
-                    turn_right(.3)
-def hunt_ball(pos):
+    return [hue_value if hue_value else 0,(dist) if hue_value else 0,int(dist/height) if hue_value else None ]
+def hunt_ball(pos, d, color):
     forward_time = 0
     while True:
-        print("BALL", pos)
+        print("BALL", pos, d)
         if (time.time() - our_car.car_record_time) > .2:
             our_car.car_record_time = time.time()
             infrared = our_car.infrared.read_all_infrared()
             #infrared equals 0 we go forward
             #print(infrared)
             if infrared == 0:
-                if pos >= 120:
+                if d < 0:
                     print("I need to go left")
-                    turn_left(.15)
+                    turn_left(.1/2)
+                    forward()
+                    time.sleep(.45)
                     our_car.motor.set_motor_model(0,0,0,0)
-                    pos -= 25
-                elif pos < -120:
+                    print("THIS IS THE DIR", d)
+                elif d > 0:
                     print("I need to go right")
-                    turn_right(.15)
-                    pos += 25
-                pos = 0
-                forward()
-                forward_time += .1
+                    turn_right(.1/2)
+                    forward()
+                    time.sleep(.45)
+                    our_car.motor.set_motor_model(0,0,0,0)
+                    print("THIS IS THE DIR", d)
+                else:
+                    for i in range(28):
+                        infrared = our_car.infrared.read_all_infrared()
+                        print("IR is: ", infrared)
+                        if infrared == 0:
+                            forward(force="HIGH")
+                            time.sleep(.1/4)
+                            forward_time += .25/28
+                            our_car.motor.set_motor_model(0,0,0,0)
+                        else:
+                            break
+                   
+
+                camera.save_image("test.jpg")
+                image = cv2.imread("test.jpg") 
+                d_temp = find_ball(image)[2]
+                d = d_temp if d_temp != None else d
             # reverse towards left to adjust for the track
             else:
                 reverse(forward_time)
+                success(color)
                 break
-
+def success(color):
+    for i in range(15):
+        light_up(color)
+        time.sleep(.1)
+        led.colorBlink(0)
+        time.sleep(.1)
 def hue_for_color(hue):
     color = hue
     if 20 < hue < 60:
@@ -211,15 +212,23 @@ def hue_for_color(hue):
         color = "green"
     elif 90 < hue < 110:
         color = "blue"
-    elif 110 < hue < 170:
+    elif 110 < hue < 180:
         color = "red"
     return color
-
+def light_up(color):
+    if color == "blue":
+        led.ledIndex(0x01, 0,   0,   255)
+    if color == "red":
+        led.ledIndex(0x01, 255,   0,   0)
+    if color == "green":
+        led.ledIndex(0x01, 0,   255,  0)
+    if color == "yellow":
+        led.ledIndex(0x01, 250,   255,  0)
 def survey(color_list):
     camera.start_stream()
     our_car.servo.set_servo_pwm('0', 55)
-    '''forward()
-    time.sleep(1.5)'''
+    forward()
+    time.sleep(1.5)
     our_car.motor.set_motor_model(0,0,0,0)
     ball_seen = False
     ball_seen_time = 0
@@ -236,13 +245,19 @@ def survey(color_list):
                         ball_info = find_ball(image)
                         ball_hue = ball_info[0]
                         ball_pos = ball_info[1]
+                        ball_depth = ball_info[2]
                         color = hue_for_color(ball_hue)
                         if color_seq and color == color_seq[0]:
                             print("BALL POS", ball_pos)
+                            light_up(color)
                             time.sleep(3)
-                            hunt_ball(ball_pos)
+                            led.colorBlink(0)
+                            hunt_ball(ball_pos, ball_depth, color)
                             color_seq.pop(0)
                         else:
+                            infrared = our_car.infrared.read_all_infrared()
+                            if infrared != 0:
+                                reverse(.75)
                             turn_right(.2)
                 time.sleep(.15)
     except KeyboardInterrupt:
@@ -266,20 +281,6 @@ def test():
             print("Final: ", ball_info_2[1], "Angle: ", ball_info[2])
     except KeyboardInterrupt:
         our_car.motor.set_motor_model(0,0,0,0)
-
-def linedetect():
-    try:
-        while True:
-            global found_ball
-            if found_ball:
-                time.sleep(5)
-                found_ball = False
-            boundary()
-    except KeyboardInterrupt:
-        our_car.close()
-        print("\nEnd of program")
-
-
 if __name__ == "__main__":
     color_seq = []
     args = sys.argv[1:]
