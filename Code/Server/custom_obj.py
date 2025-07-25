@@ -37,39 +37,68 @@ def turn_left(t):
     our_car.motor.set_motor_model(-2000,-2000,3000,3000) 
     time.sleep(t)
     our_car.motor.set_motor_model(0,0,0,0)
-def forward(obj,t, force=None):
+def scan(obj):
+    for i in range(6):
+        infra = our_car.infrared.read_all_infrared()
+        if infra != 0:
+            reverse(.5)
+        if i < 3:
+            turn_right(.3)
+        else:
+            turn_left(.3)
+        time.sleep(.1)
+        camera.save_image("test.jpg")
+        image = cv2.imread("test.jpg") 
+        obj_info = find_ball(image)
+        if obj_info and obj_info["color"] == obj:
+            print(f"found {obj} in scan")
+            return
+
+def forward(obj,t):
     camera.save_image("test.jpg")
     image = cv2.imread("test.jpg") 
     obj_info = find_ball(image)
-    if obj_info and obj_info["color"] == obj:
-        print("BALL")
-        infrared = our_car.infrared.read_all_infrared()
-        if obj != "ball":
-            return
-        while infrared == 0:
-            time.sleep(.1)
-            camera.save_image("test.jpg")
-            image = cv2.imread("test.jpg") 
-            obj_info = find_ball(image)
-            if obj_info["dir_from_center"] > 0:
-                turn_left(.05)
-            elif obj_info["dir_from_center"] < 0:
-                turn_right(.05)
-            infrared = our_car.infrared.read_all_infrared()
-            our_car.motor.set_motor_model(1200,1200,1200,1200)
-        our_car.motor.set_motor_model(0,0,0,0)
-        print(f"I FOUND {obj}")
-        return True
-    obj_in_the_way = obj_info and ((obj_info["type"] == "balls" and obj_info["color"] != obj and obj_info["dir_from_center"] == 0) or (obj_info["type"] != obj))
+    
+    obj_in_the_way = obj_info and ((obj_info["color"] != obj and obj_info["dir_from_center"] == 0))
     box_detected = our_car.sonic.get_distance() < 10
     print(obj_info, "| way: ", obj_in_the_way, "| box: ", box_detected)
     if obj_in_the_way:
-        turn_left(.05)
+        time.sleep(.2)
+        turn_left(.1)
     elif box_detected:
+        success("red")
         reverse(.5)
         turn_left(.5)
+    if obj_info and obj_info["color"] == obj and not obj_in_the_way:
+        print("BALL")
+        infrared = our_car.infrared.read_all_infrared()
+        if obj_info["color"] == "shoe":
+            light_up("rainbow")
+            time.sleep(1)
+            return
+        light_up(obj)
+        while infrared == 0:
+            infrared = our_car.infrared.read_all_infrared()
+            camera.save_image("test.jpg")
+            image = cv2.imread("test.jpg") 
+            obj_info = find_ball(image)
+            if obj_info and obj_info["dir_from_center"] > 0 and obj_info["color"] == obj:
+                turn_right(.1)
+            elif obj_info and obj_info["dir_from_center"] < 0 and obj_info["color"] == obj:
+                turn_left(.1)
+            for i in range(30):
+                infrared = our_car.infrared.read_all_infrared()
+                if infrared == 0:
+                    our_car.motor.set_motor_model(2200,2200,2200,2200)
+                    time.sleep(.05)
+                    our_car.motor.set_motor_model(0,0,0,0)
+                else:
+                    break
+        our_car.motor.set_motor_model(0,0,0,0)
+        print(f"I FOUND {obj}")
+        led.colorBlink(0)
+        return True
     our_car.motor.set_motor_model(1200,1200,1200,1200)
-
     time.sleep(t)
 def reverse(t):
     our_car.motor.set_motor_model(-800,-800,-800,-800)
@@ -175,7 +204,8 @@ def find_ball(img):
             max_score = curr_score[i]
             max_index = i
             cv2.imwrite('video.jpg', img)
-            return {"type": object_name, "color": hue_for_color(hue_value), "dir_from_center": int(dist/height)  }
+            is_shoe = hue_for_color(hue_value) == "yellow" and object_name == "shoe" 
+            return {"type": object_name, "color": "shoe" if is_shoe else hue_for_color(hue_value), "dir_from_center": int(dist/height)  }
 
             
 
@@ -183,7 +213,7 @@ def find_ball(img):
     cv2.imwrite('video.jpg', img)
     return None
 def success(color):
-    for i in range(15):
+    for i in range(10):
         light_up(color)
         time.sleep(.1)
         led.colorBlink(0)
@@ -208,39 +238,52 @@ def light_up(color):
         led.ledIndex(0x01, 0,   255,  0)
     if color == "yellow":
         led.ledIndex(0x01, 250,   255,  0)
+    if color == "rainbow":
+        led.ledIndex(0x01, 255,   0,   0)      #Red
+        led.ledIndex(0x02, 255, 125,   0)      #orange
+        led.ledIndex(0x04, 255, 255,   0)      #yellow
+        led.ledIndex(0x08,   0, 255,   0)      #green
+        led.ledIndex(0x10,   0, 255, 255)      #cyan-blue
+        led.ledIndex(0x20,   0,   0, 255)      #blue
+        led.ledIndex(0x40, 128,   0, 128)      #purple
+        led.ledIndex(0x80, 255, 255, 255)      #white
 def relocate():
     pass
 def survey(obj_list):
     camera.start_stream()
     try:
         for obj in obj_list:
+            infrared = None
             while True:
+                print(f"looking for {obj}")
                 if (time.time() - our_car.car_record_time) > .2:
                     # get sensor readings
                     our_car.car_record_time = time.time()
                     infrared = our_car.infrared.read_all_infrared()
                     sonic_dist = our_car.sonic.get_distance()
-                    time.sleep(.25)
+                    time.sleep(.1)
                     if infrared == 0:
                         found = forward(obj, .2)
+                        print("FOUND == " , found)
+                        if found:
+                            reverse(.5)
+                            time.sleep(3)
+                            print("Transitioning to next object")
+                            break
                         our_car.motor.set_motor_model(0,0,0,0)
                     else:
                         reverse(.5)
+                        turn_right(.2)
                         turn_right(.5)
-                    if found:
-                        break
-
-
-                    
-
-
+                        scan(obj)
+        print("im done!!!")
+        raise KeyboardInterrupt
     except KeyboardInterrupt:
         our_car.close()
         led.colorBlink(0) 
         led.close()
 def test():
     try:
-
         while True:
             dist = our_car.sonic.get_distance()
             print(dist)
